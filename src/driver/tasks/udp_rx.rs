@@ -21,7 +21,7 @@ use discortp::{
     PacketSize,
 };
 use flume::Receiver;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, convert::TryInto, sync::Arc};
 #[cfg(not(feature = "tokio-02-marker"))]
 use tokio::{net::UdpSocket, select};
 #[cfg(feature = "tokio-02-marker")]
@@ -183,8 +183,11 @@ impl SsrcState {
             let mut out = vec![0; self.decode_size.len()];
 
             for _ in 0..missed_packets {
-                let missing_frame: Option<&[u8]> = None;
-                if let Err(e) = self.decoder.decode(missing_frame, &mut out[..], false) {
+                let missing_frame: Option<audiopus::packet::Packet> = None;
+                if let Err(e) =
+                    self.decoder
+                        .decode(missing_frame, (&mut out[..]).try_into()?, false)
+                {
                     warn!("Issue while decoding for missed packet: {:?}.", e);
                 }
             }
@@ -196,9 +199,11 @@ impl SsrcState {
             // This should scan up to find the "correct" size that a source is using,
             // and then remember that.
             loop {
-                let tried_audio_len =
-                    self.decoder
-                        .decode(Some(&data[start..]), &mut out[..], false);
+                let tried_audio_len = self.decoder.decode(
+                    Some((&data[start..]).try_into()?),
+                    (&mut out[..]).try_into()?,
+                    false,
+                );
 
                 match tried_audio_len {
                     Ok(audio_len) => {
